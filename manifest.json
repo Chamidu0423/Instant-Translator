@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Hover & Select Translator",
+  "name": "Instant Translator",
   "description": "Instantly translate text on any webpage by selecting or hovering. Professional, fast, and privacy-friendly.",
   "version": "1.0",
   "permissions": ["storage", "contextMenus"],
