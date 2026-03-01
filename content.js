@@ -21,9 +21,22 @@ chrome.storage.onChanged.addListener((changes) => {
   if (changes.displayMethod) displayMethod = changes.displayMethod.newValue;
 });
 
+// Listener for Context Menu translations from background
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.action === "translate_context") {
+    let selection = window.getSelection();
+    let rect;
+    if (selection.rangeCount > 0) {
+      rect = selection.getRangeAt(0).getBoundingClientRect();
+    } else {
+      rect = { top: window.innerHeight / 2, left: window.innerWidth / 2, bottom: window.innerHeight / 2, right: window.innerWidth / 2 };
+    }
+    processTranslation(msg.text, rect, selection.rangeCount > 0 ? selection.getRangeAt(0) : null);
+  }
+});
+
 // Remove popup utility
 function removePopup() {
-  if (popup) {
     popup.classList.add('fadeout');
     setTimeout(() => { if (popup) popup.remove(); popup = null; }, 200);
     if (popupTimeout) {
@@ -31,7 +44,6 @@ function removePopup() {
       popupTimeout = null;
     }
     popupRect = null;
-  }
 }
 
 // SELECT method
@@ -92,12 +104,15 @@ document.addEventListener('mousemove', handleMouseMove);
 document.addEventListener('scroll', removePopup, true);
 window.addEventListener('blur', removePopup);
 
-// Get word at cursor
+// Get word at cursor (Improved to remove punctuation)
 function getWordAtPosition(str, pos) {
   let left = str.slice(0, pos).search(/\S+$/);
   let right = str.slice(pos).search(/\s/);
   if (right < 0) right = str.length;
-  return str.slice(left, right + pos);
+  let word = str.slice(left, right + pos);
+  
+  // Trim common punctuation marks from ends
+  return word.replace(/^[.,;:!?"'()[\]{}<>]+|[.,;:!?"'()[\]{}<>]+$/g, '').trim();
 }
 
 // Translate via background
@@ -165,34 +180,54 @@ document.addEventListener('click', (e) => {
   }
 });
 
-// Show popup
+// Show popup (With Dark/Light Mode and Audio support)
 function showPopup(text, rect, loading = false) {
+  const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const bgColor = isDark ? '#333' : '#fff';
+  const textColor = isDark ? '#fff' : '#111';
+  const borderColor = isDark ? '1px solid #555' : '1px solid #ddd';
+  
   if (popup) {
-    popup.innerText = text;
+    popup.innerHTML = `
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span>${text}</span>
+        ${(!loading && text.indexOf('Translating') !== 0 && text !== 'Translation failed') ? '<span class="speak-btn" style="cursor:pointer;font-size:16px;" title="Listen">🔊</span>' : ''}
+      </div>
+    `;
     popup.style.opacity = loading ? '0.7' : '1';
-    popup.style.top = `${Math.max(8, window.scrollY + rect.top - 44)}px`;
+    popup.style.top = `${Math.max(8, window.scrollY + rect.top - 48)}px`;
     popup.style.left = `${Math.max(8, window.scrollX + rect.left)}px`;
+    popup.style.backgroundColor = bgColor;
+    popup.style.color = textColor;
+    popup.style.border = borderColor;
     popupShownAt = Date.now();
     popupRect = rect;
+    setupAudio(text, loading);
     return;
   }
 
   popup = document.createElement('div');
   popup.id = 'custom-translator-popup';
-  popup.innerText = text;
+  popup.innerHTML = `
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span>${text}</span>
+      ${!loading ? '<span class="speak-btn" style="cursor:pointer;font-size:16px;" title="Listen">🔊</span>' : ''}
+    </div>
+  `;
   Object.assign(popup.style, {
     position: 'absolute',
-    backgroundColor: '#333',
-    color: '#fff',
-    padding: '7px 12px',
-    borderRadius: '7px',
+    backgroundColor: bgColor,
+    color: textColor,
+    border: borderColor,
+    padding: '8px 12px',
+    borderRadius: '8px',
     zIndex: '2147483647',
     fontSize: '15px',
-    boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
-    pointerEvents: 'none',
+    boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+    pointerEvents: 'auto', // changed so user can click speaker button
     opacity: loading ? '0.7' : '1',
     transition: 'opacity 0.2s',
-    top: `${Math.max(8, window.scrollY + rect.top - 44)}px`,
+    top: `${Math.max(8, window.scrollY + rect.top - 48)}px`,
     left: `${Math.max(8, window.scrollX + rect.left)}px`,
     maxWidth: '320px',
     maxHeight: '120px',
@@ -203,8 +238,23 @@ function showPopup(text, rect, loading = false) {
   document.body.appendChild(popup);
   popupShownAt = Date.now();
   popupRect = rect;
-  // No autohide stays until mouse leaves area
+  setupAudio(text, loading);
 }
+
+// Ensure audio can be played
+function setupAudio(text, loading) {
+  if (loading) return;
+  const speakBtn = popup.querySelector('.speak-btn');
+  if (speakBtn) {
+    speakBtn.addEventListener('mousedown', (e) => {
+      e.stopPropagation();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = targetLang;
+      window.speechSynthesis.speak(utterance);
+    });
+  }
+}
+
 
 
 // Hide popup when mouse moves away from popup or selection area
