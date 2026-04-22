@@ -1,5 +1,3 @@
-// background.js - Professionalized
-
 // Simple in-memory cache to prevent spamming the API
 const translationCache = new Map();
 
@@ -49,7 +47,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           // Save to cache on success
           if (translated !== '') {
             translationCache.set(cacheKey, translated);
-            // Optional: Limit map size to 500 items max to prevent unbounded memory growth
+            //  Limit map size to 500 items max to prevent unbounded memory growth
             if (translationCache.size > 500) {
               const firstKey = translationCache.keys().next().value;
               translationCache.delete(firstKey);
